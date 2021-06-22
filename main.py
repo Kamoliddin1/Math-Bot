@@ -152,7 +152,16 @@ def callback_query(update: Update, context: CallbackContext):
 
 
 def ranking(update: Update, context: CallbackContext):
-    players = Profile.objects.all()
+    players = Profile.objects.order_by('-score')
+    res = dict()
+    text = f'Bizning Faxriylarimiz \n\n'
+    medal = ['🏅','🥇', '🥈', '🥉']
+    for player in players:
+        res[player] = player.score
+    sorted_score = {k: v for k, v in sorted(res.items(), key=lambda item: item[1], reverse=True)}
+    for k in sorted_score:
+        text += f'{medal[0]}<i>@{k}</i> - <b>{sorted_score[k]}</b>'
+    context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode=ParseMode.HTML)
 
 
 dispatcher.add_handler(CommandHandler('start', start))
