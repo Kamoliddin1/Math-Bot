@@ -5,6 +5,7 @@
 these settings as is, and skip to START OF APPLICATION section below """
 
 # Turn off bytecode generation
+import datetime
 import sys
 
 import settings
@@ -30,7 +31,7 @@ from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    ParseMode
+    ParseMode, InlineQueryResultArticle, InputTextMessageContent
 )
 from telegram.ext import (
     Updater,
@@ -38,12 +39,13 @@ from telegram.ext import (
     CommandHandler,
     CallbackContext,
     CallbackQueryHandler,
-    JobQueue
+    JobQueue, InlineQueryHandler
 )
 from db.models import Profile
 import random
 import logging
 import operator
+from datetime import datetime, timedelta
 
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -63,7 +65,7 @@ def start(update: Update, callback: CallbackContext):
             'last_name': update.message.from_user.last_name
         }
     )
-    update.message.reply_text(f'Assalomu Alaykum Matematika sinovlariga Xush Kelibsiz'
+    update.message.reply_text(f'Assalomu Alaykum Matematika sinovlariga Xush Kelibsiz\n'
                               f'Boshlash uchun /game yozing')
 
 
@@ -95,44 +97,36 @@ def generate_lv1_keyboard(a, b, chosen_op):
     return keyboard
 
 
-def callback_alarm(bot, job):
-    bot.send_message(chat_id=job.context, text='BEEP')
-
-
-def callback_timer(bot, update, job_queue):
-    bot.send_message(chat_id=update.message.chat_id,
-                     text='Setting a timer for 1 minute!')
-
-    job_queue.run_once(callback_alarm, 60, context=update.message.chat_id)
-
-
-def game(update: Update, context: CallbackContext):
+def generate_question():
     a = random.randrange(1, 10)
     b = random.randrange(1, 10)
     random_operation = ['+', '-', '*']
     chosen_op = random.choice(random_operation)
-
     keyboard = generate_lv1_keyboard(a, b, chosen_op)
-    # text = f"⏳Sizda 26 sekund vaqt bor\n\n" \
-    #        f"_Savol_: *{a} \{chosen_op} {b}* _necha_ _bo'ladi_\n" \
-    #        f"Quyidagilardan to'g'ri javobni tanlang:"
-    # update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
-    #                           parse_mode=ParseMode.MARKDOWN_V2)
-
     text = f"⏳Sizda 26 sekund vaqt bor\n\n" \
            f"<i>Savol</i>: <b>{a} {chosen_op} {b}</b> <i>necha bo'ladi</i>\n" \
            f"Quyidagilardan to'g'ri javobni tanlang:"
+    return text, keyboard
+
+
+def game(update: Update, context: CallbackContext):
+    # a = random.randrange(1, 10)
+    # b = random.randrange(1, 10)
+    # random_operation = ['+', '-', '*']
+    # chosen_op = random.choice(random_operation)
+
+    # keyboard = generate_lv1_keyboard(a, b, chosen_op)
+    # text = f"⏳Sizda 26 sekund vaqt bor\n\n" \
+    #        f"<i>Savol</i>: <b>{a} {chosen_op} {b}</b> <i>necha bo'ladi</i>\n" \
+    #        f"Quyidagilardan to'g'ri javobni tanlang:"
+    text, keyboard = generate_question()
     update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
                               parse_mode=ParseMode.HTML)
 
 
 def callback_query(update: Update, context: CallbackContext):
     query = update.callback_query.data
-    print('\n------\n---------')
     curr_id = update.callback_query.message.chat.id
-    print(curr_id)
-    print('\n------\n---------')
-    print(query)
     _, inp, answer, a, b, cho = query.split("|")
     print(query.split('|'))
     if inp == answer:
@@ -152,10 +146,10 @@ def callback_query(update: Update, context: CallbackContext):
 
 
 def ranking(update: Update, context: CallbackContext):
-    players = Profile.objects.order_by('-score')
+    players = Profile.objects.order_by('-score')[:10]
     res = dict()
     text = f'Bizning Faxriylarimiz \n\n'
-    medal = ['🏅','🥇', '🥈', '🥉']
+    medal = ['🏅', '🥇', '🥈', '🥉']
     for player in players:
         res[player] = player.score
     sorted_score = {k: v for k, v in sorted(res.items(), key=lambda item: item[1], reverse=True)}
@@ -164,10 +158,62 @@ def ranking(update: Update, context: CallbackContext):
     context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode=ParseMode.HTML)
 
 
+def render_progressbar(total, iteration, prefix='', suffix='', length=30, fill='█', zfill='░'):
+    iteration = min(total, iteration)
+    percent = "{0:.1f}"
+    percent = percent.format(100 * (iteration / float(total)))
+    filled_length = int(length * iteration // total)
+    pbar = fill * filled_length + zfill * (length - filled_length)
+    return '{0} |{1}| {2}% {3}'.format(prefix, pbar, percent, suffix)
+
+
+def callback_alarm(context: CallbackContext):
+    job = context.job
+
+    thirty_seconds = datetime.now() + timedelta(seconds=30)
+    diff = round((thirty_seconds - datetime.now()).total_seconds(), 0)
+
+    context.bot.send_message(chat_id=job.context, text=f"{diff}")
+
+
+def remove_job_if_exists(name: str, context: CallbackContext) -> bool:
+    current_jobs = context.job_queue.get_jobs_by_name(name)
+    if not current_jobs:
+        return False
+    for job in current_jobs:
+        job.schedule_removal()
+    return True
+
+
+def set_timer(update: Update, context: CallbackContext):
+    chat_id = update.message.chat_id
+    try:
+        job_removed = remove_job_if_exists(str(chat_id), context)
+        context.job_queue.run_repeating(callback_alarm, interval=1, first=1, last=30, context=chat_id,
+                                        name=str(chat_id))
+
+        text = 'Timer successfully set!'
+        if job_removed:
+            text += ' Old one was removed.'
+        update.message.reply_text(text)
+    except (IndexError, ValueError):
+        update.message.reply_text('Usage /set <seconds>')
+
+
+def unset(update: Update, context: CallbackContext):
+    chat_id = update.message.chat_id
+    job_removed = remove_job_if_exists(str(chat_id), context)
+    text = 'Job was removed' if job_removed else 'No active timer was set'
+    update.message.reply_text(text)
+
+
 dispatcher.add_handler(CommandHandler('start', start))
 dispatcher.add_handler(CommandHandler('game', game))
 dispatcher.add_handler(CommandHandler('rank', ranking))
-dispatcher.add_handler(CommandHandler('timer', callback_timer, pass_job_queue=True))
+
+dispatcher.add_handler(CommandHandler("set", set_timer))
+dispatcher.add_handler(CommandHandler("unset", unset))
+
 dispatcher.add_handler(CallbackQueryHandler(callback_query))
 updater.start_polling()
 updater.idle()
