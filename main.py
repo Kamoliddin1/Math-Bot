@@ -48,15 +48,15 @@ import logging
 import operator
 from datetime import datetime, timedelta
 
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# logging.basicConfig(level=logging.DEBUG,
+#                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 updater = Updater(token=settings.TOKEN)
 dispatcher: Dispatcher = updater.dispatcher
 job: JobQueue = updater.job_queue
 
 
-def start(update: Update, callback: CallbackContext):
+def start(update: Update, context: CallbackContext):
     chat_id = update.message.chat_id
     p, _ = Profile.objects.get_or_create(
         user_id=chat_id,
@@ -69,6 +69,7 @@ def start(update: Update, callback: CallbackContext):
                               f'Boshlash uchun /game yozing')
 
 
+# Logic
 def generate_lv1_keyboard(a, b, chosen_op):
     operator_functions = {
         '+': operator.add(a, b),
@@ -111,9 +112,7 @@ def generate_question(level):
     #     # diff = round((thirty_seconds - datetime.now()).total_seconds(), 0)
     # except TypeError:
     #     pass
-    print("--------------------------------------------------")
-    print(LEVEL)
-    print("--------------------------------------------------")
+
     if LEVEL == 1:
         random_operation = ['+']
     elif LEVEL == 2:
@@ -131,55 +130,54 @@ def generate_question(level):
     left = 25
 
     progress = render_progressbar(time, left)
-    text = f"⏳{progress}" \
+    text = f"Siz hozir {LEVEL}-bosqichdasiz\n" \
+           f"⏳{progress}" \
            f"⏳Sizda {left} sekund vaqt bor\n\n" \
            f"<i>Savol</i>: <b>{a} {chosen_op} {b}</b> <i>necha bo'ladi</i>\n" \
            f"Quyidagilardan to'g'ri javobni tanlang:"
     return text, keyboard
 
 
-def game(context: CallbackContext):
-    # a = random.randrange(1, 10)
-    # b = random.randrange(1, 10)
-    # random_operation = ['+', '-', '*']
-    # chosen_op = random.choice(random_operation)
+def game(update: Update, context: CallbackContext):
+    chat_id = update.message.chat_id
+    profile = Profile.objects.get(user_id=chat_id)
+    level = profile.level
 
-    # keyboard = generate_lv1_keyboard(a, b, chosen_op)
-    # text = f"⏳Sizda 26 sekund vaqt bor\n\n" \
-    #        f"<i>Savol</i>: <b>{a} {chosen_op} {b}</b> <i>necha bo'ladi</i>\n" \
-    #        f"Quyidagilardan to'g'ri javobni tanlang:"
-    try:
-        context.user_data.update({
-            'level': 4,
-        })
-        level = context.user_data['level']
-    except AttributeError:
-        level = 1
     text, keyboard = generate_question(level)
 
-    # update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
-    #                           parse_mode=ParseMode.HTML)
-
-    # job = context.job
-
-    context.bot.send_message(text=text, chat_id=context.job.context,
+    context.bot.send_message(text=text, chat_id=chat_id,
                              reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
                              parse_mode=ParseMode.HTML)
-    stop_job_if_exists(str(403839849), context, b=False)
 
 
 def callback_query(update: Update, context: CallbackContext):
     query = update.callback_query.data
     curr_id = update.callback_query.message.chat.id
     _, inp, answer, a, b, cho = query.split("|")
-    print(query.split('|'))
-    if query:
-        stop_job_if_exists(str(403839849), context, b=True)
+    profile = Profile.objects.get(user_id=curr_id)
+    level = profile.level
+    print(level)
+    print(profile.score)
+    if level <= 2:
+        text, keyboard = generate_question(level)
+        context.bot.send_message(text=text, chat_id=curr_id,
+                                 reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+                                 parse_mode=ParseMode.HTML)
 
     if inp == answer:
         p = Profile.objects.get(user_id=curr_id)
         p.score += 1
-        print(context.user_data)
+        if p.score == 2:
+            print('in 222')
+            p.level = 1
+            p.save()
+        elif p.score == 4:
+            p.level = 2
+            p.save()
+        # elif p.score > 6:
+        #     p.level = 3
+        # elif p.score > 8:
+        #     p.level = 4
         p.save()
         text = f"Sizning javobingiz to'g'ri\n" \
                f'<b>{a} {cho} {b}</b> = {answer} ✅\n😁'
@@ -191,11 +189,6 @@ def callback_query(update: Update, context: CallbackContext):
                                   chat_id=update.callback_query.message.chat.id,
                                   message_id=update.callback_query.message.message_id,
                                   parse_mode=ParseMode.HTML)
-    # Event().wait(5)
-    # context.bot.edit_message_text(text=text+"\nhello world",
-    #                               chat_id=update.callback_query.message.chat.id,
-    #                               message_id=update.callback_query.message.message_id,
-    #                               parse_mode=ParseMode.HTML)
 
 
 def ranking(update: Update, context: CallbackContext):
@@ -255,11 +248,21 @@ def set_timer(update: Update, context: CallbackContext):
         update.message.reply_text('Usage /set <seconds>')
 
 
-dispatcher.add_handler(CommandHandler('start', start))
-dispatcher.add_handler(CommandHandler('game', set_timer))
-dispatcher.add_handler(CommandHandler('rank', ranking))
+def reset(update: Update, context: CallbackContext):
+    curr_id = update.message.chat_id
+    profile = Profile.objects.get(user_id=curr_id)
+    profile.score = 0
+    profile.level = 1
+    profile.save()
+    text = f"Sizning barcha erishganlaringiz  yo'qga aylantirildi\n" \
+           f"Hozirgi Level {profile.level} va Hozirgi  Ballar {profile.score}"
+    context.bot.send_message(curr_id, text)
 
-# dispatcher.add_handler(CommandHandler("set", set_timer))
+
+dispatcher.add_handler(CommandHandler('start', start))
+dispatcher.add_handler(CommandHandler('game', game))
+dispatcher.add_handler(CommandHandler('rank', ranking))
+dispatcher.add_handler(CommandHandler('reset', reset))
 
 dispatcher.add_handler(CallbackQueryHandler(callback_query))
 updater.start_polling()
