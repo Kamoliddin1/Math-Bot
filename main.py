@@ -52,7 +52,7 @@ from datetime import datetime, timedelta
 
 # logging.basicConfig(level=logging.DEBUG,
 #                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
+PORT = '8443'
 updater = Updater(token=settings.TOKEN)
 dispatcher: Dispatcher = updater.dispatcher
 job: JobQueue = updater.job_queue
@@ -329,5 +329,8 @@ dispatcher.add_handler(CommandHandler('reset', reset))
 # dispatcher.add_handler(CommandHandler('set', set_timer))
 
 dispatcher.add_handler(CallbackQueryHandler(callback_query))
-updater.start_polling()
+updater.start_webhook(listen="0.0.0.0",
+                      port=PORT,
+                      url_path=settings.TOKEN,
+                      webhook_url="https://agile-mesa-06669.herokuapp.com/" + settings.TOKEN)
 updater.idle()
