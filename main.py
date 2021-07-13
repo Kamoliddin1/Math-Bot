@@ -50,8 +50,8 @@ import logging
 import operator
 from datetime import datetime, timedelta
 
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# logging.basicConfig(level=logging.DEBUG,
+#                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 updater = Updater(token=settings.TOKEN)
 dispatcher: Dispatcher = updater.dispatcher

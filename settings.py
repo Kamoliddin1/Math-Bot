@@ -37,6 +37,6 @@ INSTALLED_APPS = ("db",)
 TIME_ZONE = 'Asia/Tashkent'
 USE_TZ = True
 try:
-    from local_settings import *
+    from local import *
 except ImportError:
     pass
