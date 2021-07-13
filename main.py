@@ -9,6 +9,8 @@ import datetime
 import sys
 from threading import Event
 
+from django.utils import timezone
+
 import settings
 
 sys.dont_write_bytecode = True
@@ -48,8 +50,8 @@ import logging
 import operator
 from datetime import datetime, timedelta
 
-# logging.basicConfig(level=logging.DEBUG,
-#                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 updater = Updater(token=settings.TOKEN)
 dispatcher: Dispatcher = updater.dispatcher
@@ -65,6 +67,8 @@ def start(update: Update, context: CallbackContext):
             'last_name': update.message.from_user.last_name
         }
     )
+    chat_data = context.chat_data
+    chat_data.update({'emoji': []})
     update.message.reply_text(f'Assalomu Alaykum Matematika sinovlariga Xush Kelibsiz\n'
                               f'Boshlash uchun /game yozing')
 
@@ -101,18 +105,6 @@ def generate_question(level):
     a = random.randrange(1, 10)
     b = random.randrange(1, 10)
     LEVEL = level
-    # thirty_seconds = datetime.now() + timedelta(seconds=30)
-    # context.user_data.update({
-    #     'level': LEVEL,
-    #     # 'time': thirty_seconds
-    # })
-    # try:
-    #
-    #     thirty_seconds = context.user_data['time']
-    #     # diff = round((thirty_seconds - datetime.now()).total_seconds(), 0)
-    # except TypeError:
-    #     pass
-
     if LEVEL == 1:
         random_operation = ['+']
     elif LEVEL == 2:
@@ -126,14 +118,10 @@ def generate_question(level):
 
     chosen_op = random.choice(random_operation)
     keyboard = generate_lv1_keyboard(a, b, chosen_op)
-    time = 30
-    left = 25
 
-    progress = render_progressbar(time, left)
     text = f"Siz hozir {LEVEL}-bosqichdasiz\n" \
-           f"⏳{progress}" \
-           f"⏳Sizda {left} sekund vaqt bor\n\n" \
-           f"<i>Savol</i>: <b>{a} {chosen_op} {b}</b> <i>necha bo'ladi</i>\n" \
+           f"Sizda 10 sekund vaqt bor!\n" \
+           f"<i>Savol</i>: <b>{a} {chosen_op} {b}</b> <i>necha bo'ladi?</i>\n" \
            f"Quyidagilardan to'g'ri javobni tanlang:"
     return text, keyboard
 
@@ -142,7 +130,8 @@ def game(update: Update, context: CallbackContext):
     chat_id = update.message.chat_id
     profile = Profile.objects.get(user_id=chat_id)
     level = profile.level
-
+    chat_data = context.chat_data
+    chat_data.update({'msg_id': update.message.message_id + 1})
     text, keyboard = generate_question(level)
 
     context.bot.send_message(text=text, chat_id=chat_id,
@@ -154,63 +143,103 @@ def callback_query(update: Update, context: CallbackContext):
     query = update.callback_query.data
     curr_id = update.callback_query.message.chat.id
     _, inp, answer, a, b, cho = query.split("|")
+    chat_data = context.chat_data
+    msg_id = chat_data['msg_id']
+
+    pressed = timezone.now()
+    created = update.callback_query.message.date
+    edit_date = update.callback_query.message.edit_date
+    print(f"\n\nEDIT date {edit_date}\n\nCREAT date {created}\n\nPRESSED date {pressed}")
+    if edit_date:
+        total = (pressed - edit_date).total_seconds()
+    else:
+        total = (pressed - created).total_seconds()
     profile = Profile.objects.get(user_id=curr_id)
     level = profile.level
-    print(level)
-    print(profile.score)
-    if level <= 2:
+    if level < 4:
         text, keyboard = generate_question(level)
-        context.bot.send_message(text=text, chat_id=curr_id,
-                                 reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
-                                 parse_mode=ParseMode.HTML)
+        can = '✅'
+        cant = '❌'
+        didnt = '☑️'
 
-    if inp == answer:
-        p = Profile.objects.get(user_id=curr_id)
-        p.score += 1
-        if p.score == 2:
-            print('in 222')
-            p.level = 1
-            p.save()
-        elif p.score == 4:
-            p.level = 2
-            p.save()
-        # elif p.score > 6:
-        #     p.level = 3
-        # elif p.score > 8:
-        #     p.level = 4
-        p.save()
-        text = f"Sizning javobingiz to'g'ri\n" \
-               f'<b>{a} {cho} {b}</b> = {answer} ✅\n😁'
+        if inp == answer and total < 10:
+            profile.score += 1
+            if profile.score <= 3:
+                profile.level = 1
+            elif profile.score <= 5:
+                profile.level = 2
+            elif profile.score <= 7:
+                profile.level = 3
+            elif profile.score <= 9:
+                profile.level = 4
+            # left = (10 - total) * 0.1
+            # profile.score += left
+            profile.save()
+            chat_data['emoji'].append(can)
+        elif inp == answer and total > 10 or inp != answer and total > 10:
+            chat_data['emoji'].append(didnt)
+            profile.score -= 0.5
+        else:
+            chat_data['emoji'].append(cant)
+            profile.score -= 1
+        profile.save()
+        s = '\t'.join(res for res in chat_data['emoji'])
+        print(s, '---------', chat_data['emoji'])
+        extra_info = f"{s}\n{text}"
+        context.bot.edit_message_text(text=extra_info, chat_id=curr_id, message_id=msg_id,
+                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+                                      parse_mode=ParseMode.HTML)
     else:
-        text = f"Sizning javobingiz noto'g'ri\n" \
-               f'<b>{a} {cho} {b}</b> = {inp} ❌\n😱'
-    text = f'{update.callback_query.message.text}  \n\n{text}'
-    context.bot.edit_message_text(text=text,
-                                  chat_id=update.callback_query.message.chat.id,
-                                  message_id=update.callback_query.message.message_id,
-                                  parse_mode=ParseMode.HTML)
+        text = f"O'yin tugadi!"
+        # context.bot.edit_message_text(text=extra_info, chat_id=curr_id, message_id=msg_id,
+        #                               reply_markup=None,
+        #                               parse_mode=ParseMode.HTML)
+        context.bot.send_message(text=text, chat_id=curr_id)
+
+    # if inp == answer and total < 10:
+    #     profile.score += 1
+    #     profile.save()
+    #     if profile.score <= 3:
+    #         profile.level = 1
+    #     elif profile.score <= 5:
+    #         profile.level = 2
+    #     elif profile.score <= 7:
+    #         profile.level = 3
+    #     elif profile.score <= 9:
+    #         profile.level = 4
+    #     left = (10 - total) * 0.1
+    #     profile.score += left
+    #     profile.save()
+    #     text = f"Sizning javobingiz to'g'ri\n" \
+    #            f'<b>{a} {cho} {b}</b> = {answer} ✅\n😁'
+    # elif inp == answer and total > 10 or inp != answer and total > 10:
+    #     text = f"Sizning javobingiz qabul qilinmadi ☑️\n😏"
+    #     profile.score -= 0.5
+    # else:
+    #     text = f"Sizning javobingiz noto'g'ri\n" \
+    #            f'<b>{a} {cho} {b}</b> = {inp} ❌\n😱'
+    #     profile.score -= 1
+    # text = f'{update.callback_query.message.text}  \n\n{text}'
+    # profile.user_spend += total
+    # profile.save()
+    #
+    # context.bot.edit_message_text(text=text,
+    #                               chat_id=update.callback_query.message.chat.id,
+    #                               message_id=update.callback_query.message.message_id,
+    #                               parse_mode=ParseMode.HTML)
 
 
 def ranking(update: Update, context: CallbackContext):
     players = Profile.objects.order_by('-score')[:10]
-    res = dict()
     text = f'Bizning Faxriylarimiz \n\n'
-    medal = ['🏅', '🥇', '🥈', '🥉']
-    for player in players:
-        res[player] = player.score
-    sorted_score = {k: v for k, v in sorted(res.items(), key=lambda item: item[1], reverse=True)}
-    for k in sorted_score:
-        text += f'{medal[0]}<i>@{k}</i> - <b>{sorted_score[k]}</b>'
+    medals = ['🥇', '🥈', '🥉']
+    for index, player in enumerate(players):
+        if index < len(medals):
+            text += f'{medals[index]} {player.first_name}'
+        else:
+            text += player.first_name
+        text += '\n'
     context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode=ParseMode.HTML)
-
-
-def render_progressbar(total, iteration, prefix='', suffix='', length=6, fill='⬛', zfill='🔲'):
-    iteration = min(total, iteration)
-    percent = "{0:.1f}"
-    percent = percent.format(100 * (iteration / float(total)))
-    filled_length = int(length * iteration // total)
-    pbar = zfill * (length - filled_length) + fill * filled_length
-    return '{0} |{1}| {2}% {3}'.format(prefix, pbar, percent, suffix)
 
 
 def callback_alarm(context: CallbackContext):
@@ -219,33 +248,66 @@ def callback_alarm(context: CallbackContext):
 
     diff = round((thirty_seconds - datetime.now()).total_seconds(), 0)
     print(job, diff)
-
     context.bot.send_message(chat_id=403839849, text=f"{diff}")
 
 
-def stop_job_if_exists(name: str, context: CallbackContext, b: bool) -> bool:
-    """Remove job with given name. Returns whether job was removed."""
-    current_jobs = context.job_queue.get_jobs_by_name(name)
-    print(f"\n\n\n{current_jobs}")
-    if not current_jobs:
-        return False
-    for job in current_jobs:
-        print(f"\n\n\n{job}")
-        job.enabled = b
-    return True
+def add_queue(update: Update, context: CallbackContext, func):
+    job_id = update.effective_message.message_id + update.effective_user.id
+    print('\n\n queue')
+    context.job_queue.scheduler.add_job(callback_alarm, 'interval', id=job_id, minutes=1)
+
+    print(job_id)
+    return job_id
 
 
-def set_timer(update: Update, context: CallbackContext):
-    chat_id = update.message.chat_id
-    try:
-        job_min = job.run_repeating(game, interval=5, first=1, last=30, context=chat_id,
-                                    name=str(chat_id))
-        stop_job_if_exists(str(update.message.chat_id), context, b=True)
+def remove_queue(context: CallbackContext):
+    # context.job_queue.scheduler.remove_job(id=str(job_id))
+    pass
 
-        # job_min.enabled = False
-        game(context)
-    except (IndexError, ValueError):
-        update.message.reply_text('Usage /set <seconds>')
+
+# def stop_job_if_exists(name: str, context: CallbackContext, b:bool) -> bool:
+#     """Remove job with given name. Returns whether job was removed."""
+#     current_jobs = context.job_queue.get_jobs_by_name(name)
+#     print(f"\n\n\n{current_jobs}")
+#
+#     if not current_jobs:
+#         return False
+#     for job in current_jobs:
+#         print(f"\n\n\n------------{job} ------ {job.job.id}")
+#     return True
+#
+#
+# def delete_job_if_exists(name: str, context: CallbackContext, b:bool) -> bool:
+#     """Remove job with given name. Returns whether job was removed."""
+#     current_jobs = context.job_queue.get_jobs_by_name(name)
+#
+#     if not current_jobs:
+#         return False
+#     for job in current_jobs:
+#         job.schedule_removal()
+#     return True
+#
+#
+# def set_timer(update: Update, context: CallbackContext):
+#     chat_id = update.message.chat_id
+#     message_id = update.message.message_id-1
+#     try:
+#         job.run_repeating(callback_alarm, interval=5, first=1, last=30, context=chat_id,
+#                           name=str(chat_id))
+#         context.bot.edit_message_text(text='25', chat_id=chat_id, message_id=message_id)
+#         context.bot.edit_message_text(text='20', chat_id=chat_id, message_id=message_id)
+#         context.bot.edit_message_text(text='15', chat_id=chat_id, message_id=message_id)
+#
+#     except (IndexError, ValueError):
+#         update.message.reply_text('Usage /set <seconds>')
+
+# def render_progressbar(total, iteration, prefix='', suffix='', length=6, fill='⬛', zfill='🔲'):
+#     iteration = min(total, iteration)
+#     percent = "{0:.1f}"
+#     percent = percent.format(100 * (iteration / float(total)))
+#     filled_length = int(length * iteration // total)
+#     pbar = zfill * (length - filled_length) + fill * filled_length
+#     return '{0} |{1}| {2}% {3}'.format(prefix, pbar, percent, suffix)
 
 
 def reset(update: Update, context: CallbackContext):
@@ -253,6 +315,7 @@ def reset(update: Update, context: CallbackContext):
     profile = Profile.objects.get(user_id=curr_id)
     profile.score = 0
     profile.level = 1
+    profile.user_spend = 0.0
     profile.save()
     text = f"Sizning barcha erishganlaringiz  yo'qga aylantirildi\n" \
            f"Hozirgi Level {profile.level} va Hozirgi  Ballar {profile.score}"
@@ -263,6 +326,7 @@ dispatcher.add_handler(CommandHandler('start', start))
 dispatcher.add_handler(CommandHandler('game', game))
 dispatcher.add_handler(CommandHandler('rank', ranking))
 dispatcher.add_handler(CommandHandler('reset', reset))
+# dispatcher.add_handler(CommandHandler('set', set_timer))
 
 dispatcher.add_handler(CallbackQueryHandler(callback_query))
 updater.start_polling()

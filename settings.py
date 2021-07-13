@@ -34,7 +34,8 @@ DATABASES = {
 """
 
 INSTALLED_APPS = ("db",)
-
+TIME_ZONE = 'Asia/Tashkent'
+USE_TZ = True
 try:
     from local_settings import *
 except ImportError:
