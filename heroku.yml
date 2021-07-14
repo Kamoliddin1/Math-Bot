@@ -1,10 +1,10 @@
-version: "3.9"
-
-services:
-  web:
-    build: .
-    command: 'python manage.py main'
-    volumes:
-      - .:/code
-    ports:
-      - "8443:8443"
+# web:
+#   build: .
+#   command: 'python3 manage.py main'
+#   volumes:
+#     - .:/code
+#   ports:
+#     - "8443:8443"
+build:
+  docker:
+    web: Dockerfile
