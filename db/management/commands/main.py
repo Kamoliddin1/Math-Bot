@@ -7,7 +7,7 @@ these settings as is, and skip to START OF APPLICATION section below """
 # Turn off bytecode generation
 import datetime
 import sys
-from threading import Event
+from django.core.management import BaseCommand
 
 from django.utils import timezone
 
@@ -50,9 +50,9 @@ import logging
 import operator
 from datetime import datetime, timedelta
 
-# logging.basicConfig(level=logging.DEBUG,
-#                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-PORT = '8443'
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+PORT = int(os.environ.get('PORT', 8443))
 updater = Updater(token=settings.TOKEN)
 dispatcher: Dispatcher = updater.dispatcher
 job: JobQueue = updater.job_queue
@@ -196,37 +196,6 @@ def callback_query(update: Update, context: CallbackContext):
         #                               parse_mode=ParseMode.HTML)
         context.bot.send_message(text=text, chat_id=curr_id)
 
-    # if inp == answer and total < 10:
-    #     profile.score += 1
-    #     profile.save()
-    #     if profile.score <= 3:
-    #         profile.level = 1
-    #     elif profile.score <= 5:
-    #         profile.level = 2
-    #     elif profile.score <= 7:
-    #         profile.level = 3
-    #     elif profile.score <= 9:
-    #         profile.level = 4
-    #     left = (10 - total) * 0.1
-    #     profile.score += left
-    #     profile.save()
-    #     text = f"Sizning javobingiz to'g'ri\n" \
-    #            f'<b>{a} {cho} {b}</b> = {answer} ✅\n😁'
-    # elif inp == answer and total > 10 or inp != answer and total > 10:
-    #     text = f"Sizning javobingiz qabul qilinmadi ☑️\n😏"
-    #     profile.score -= 0.5
-    # else:
-    #     text = f"Sizning javobingiz noto'g'ri\n" \
-    #            f'<b>{a} {cho} {b}</b> = {inp} ❌\n😱'
-    #     profile.score -= 1
-    # text = f'{update.callback_query.message.text}  \n\n{text}'
-    # profile.user_spend += total
-    # profile.save()
-    #
-    # context.bot.edit_message_text(text=text,
-    #                               chat_id=update.callback_query.message.chat.id,
-    #                               message_id=update.callback_query.message.message_id,
-    #                               parse_mode=ParseMode.HTML)
 
 
 def ranking(update: Update, context: CallbackContext):
@@ -321,16 +290,26 @@ def reset(update: Update, context: CallbackContext):
            f"Hozirgi Level {profile.level} va Hozirgi  Ballar {profile.score}"
     context.bot.send_message(curr_id, text)
 
+class Command(BaseCommand):
+    help = 'Telegram_bot'
 
-dispatcher.add_handler(CommandHandler('start', start))
-dispatcher.add_handler(CommandHandler('game', game))
-dispatcher.add_handler(CommandHandler('rank', ranking))
-dispatcher.add_handler(CommandHandler('reset', reset))
-# dispatcher.add_handler(CommandHandler('set', set_timer))
+    def handle(self, *args, **options):
+        try:
+            pass
+        except Exception as e:
+            print(e)
 
-dispatcher.add_handler(CallbackQueryHandler(callback_query))
-updater.start_webhook(listen="0.0.0.0",
-                      port=PORT,
-                      url_path=settings.TOKEN,
-                      webhook_url="https://agile-mesa-06669.herokuapp.com/" + settings.TOKEN)
-updater.idle()
+    dispatcher.add_handler(CommandHandler('start', start))
+    dispatcher.add_handler(CommandHandler('game', game))
+    dispatcher.add_handler(CommandHandler('rank', ranking))
+    dispatcher.add_handler(CommandHandler('reset', reset))
+    # dispatcher.add_handler(CommandHandler('set', set_timer))
+
+    dispatcher.add_handler(CallbackQueryHandler(callback_query))
+    updater.start_webhook(listen="0.0.0.0",
+                          port=PORT,
+                          url_path=settings.TOKEN,
+                          webhook_url="https://math-bot-app.herokuapp.com/" + settings.TOKEN)
+                          # webhook_url="https://fad64716b093.ngrok.io/" + settings.TOKEN)
+
+    updater.idle()
