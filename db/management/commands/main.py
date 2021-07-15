@@ -50,8 +50,8 @@ import logging
 import operator
 from datetime import datetime, timedelta
 
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# logging.basicConfig(level=logging.DEBUG,
+#                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 PORT = int(os.environ.get('PORT', 8443))
 updater = Updater(token=settings.TOKEN)
 dispatcher: Dispatcher = updater.dispatcher
@@ -60,6 +60,7 @@ job: JobQueue = updater.job_queue
 
 def start(update: Update, context: CallbackContext):
     chat_id = update.message.chat_id
+    context.chat_data.update({'has_game': 0})
     p, _ = Profile.objects.get_or_create(
         user_id=chat_id,
         defaults={
@@ -67,10 +68,11 @@ def start(update: Update, context: CallbackContext):
             'last_name': update.message.from_user.last_name
         }
     )
-    chat_data = context.chat_data
-    chat_data.update({'emoji': []})
-    update.message.reply_text(f'Assalomu Alaykum Matematika sinovlariga Xush Kelibsiz\n'
-                              f'Boshlash uchun /game yozing')
+    text = f'*Assalomu Alaykum*✋\n Matematika sinovlariga _Xush Kelibsiz_📚\n' \
+           f'*_Bu bot sizning hisob\-kitob 🧮 mahoratingizni tekshiradi_*\n' \
+           f'__Boshlash uchun__ `/game` yozing\n'
+
+    update.message.reply_text(text=text, parse_mode=ParseMode.MARKDOWN_V2)
 
 
 # Logic
@@ -115,14 +117,14 @@ def generate_question(level):
         random_operation = ['+', '-', '*', '/']
     else:
         random_operation = ['+', '-', '*', '/']
-
+    lvl_emojis = {1: '1️⃣', 2: '2️⃣', 3: '3️⃣', 4: '4️⃣'}
     chosen_op = random.choice(random_operation)
     keyboard = generate_lv1_keyboard(a, b, chosen_op)
 
-    text = f"Siz hozir {LEVEL}-bosqichdasiz\n" \
-           f"Sizda 10 sekund vaqt bor!\n" \
-           f"<i>Savol</i>: <b>{a} {chosen_op} {b}</b> <i>necha bo'ladi?</i>\n" \
-           f"Quyidagilardan to'g'ri javobni tanlang:"
+    text = f"_Siz hozir_ *{lvl_emojis[LEVEL]}* _bosqichdasiz_\n" \
+           f"Sizda __*10 sekund*__ ⏰ vaqt bor❗️\n " \
+           f"\t\t\t🤔_*Savol*_: __*{a} \{chosen_op} {b}*__ _*necha bo'ladi*_❓\n" \
+           f"Quyidagilardan👇🏻 to'g'ri javobni tanlang:"
     return text, keyboard
 
 
@@ -132,11 +134,16 @@ def game(update: Update, context: CallbackContext):
     level = profile.level
     chat_data = context.chat_data
     chat_data.update({'msg_id': update.message.message_id + 1})
+    chat_data.update({'emoji': []})
     text, keyboard = generate_question(level)
 
-    context.bot.send_message(text=text, chat_id=chat_id,
-                             reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
-                             parse_mode=ParseMode.HTML)
+    if context.chat_data['has_game'] == 0:
+        context.bot.send_message(text=text, chat_id=chat_id,
+                                 reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+                                 parse_mode=ParseMode.MARKDOWN_V2)
+    else:
+        context.bot.send_message(text=f"Natijangizni yaxshilash uchun avval `/reset` buyrug'ini bering",
+                                 chat_id=chat_id, parse_mode=ParseMode.MARKDOWN_V2)
 
 
 def callback_query(update: Update, context: CallbackContext):
@@ -149,7 +156,6 @@ def callback_query(update: Update, context: CallbackContext):
     pressed = timezone.now()
     created = update.callback_query.message.date
     edit_date = update.callback_query.message.edit_date
-    print(f"\n\nEDIT date {edit_date}\n\nCREAT date {created}\n\nPRESSED date {pressed}")
     if edit_date:
         total = (pressed - edit_date).total_seconds()
     else:
@@ -164,7 +170,7 @@ def callback_query(update: Update, context: CallbackContext):
 
         if inp == answer and total < 10:
             profile.score += 1
-            if profile.score <= 3:
+            if profile.score <= 2:
                 profile.level = 1
             elif profile.score <= 5:
                 profile.level = 2
@@ -172,8 +178,7 @@ def callback_query(update: Update, context: CallbackContext):
                 profile.level = 3
             elif profile.score <= 9:
                 profile.level = 4
-            # left = (10 - total) * 0.1
-            # profile.score += left
+
             profile.save()
             chat_data['emoji'].append(can)
         elif inp == answer and total > 10 or inp != answer and total > 10:
@@ -182,19 +187,28 @@ def callback_query(update: Update, context: CallbackContext):
         else:
             chat_data['emoji'].append(cant)
             profile.score -= 1
+        profile.user_spend += total
         profile.save()
         s = '\t'.join(res for res in chat_data['emoji'])
-        print(s, '---------', chat_data['emoji'])
         extra_info = f"{s}\n{text}"
         context.bot.edit_message_text(text=extra_info, chat_id=curr_id, message_id=msg_id,
                                       reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
-                                      parse_mode=ParseMode.HTML)
+                                      parse_mode=ParseMode.MARKDOWN_V2)
     else:
-        text = f"O'yin tugadi!"
-        # context.bot.edit_message_text(text=extra_info, chat_id=curr_id, message_id=msg_id,
-        #                               reply_markup=None,
-        #                               parse_mode=ParseMode.HTML)
-        context.bot.send_message(text=text, chat_id=curr_id)
+        context.chat_data.update({'has_game': 1})
+        context.bot.delete_message(chat_id=curr_id, message_id=msg_id)
+        can = chat_data['emoji'].count('✅')
+        cant = chat_data['emoji'].count('❌')
+        didnt = chat_data['emoji'].count('☑')
+        text = f"<b>🏁O'yin tugadi</b>\n" \
+               f"Qatnashganingiz uchun rahmat\n\n" \
+               f"\t\t\t\t\t\t\t\t📈Natijalaringiz\n" \
+               f"⏱Ketgan Vaqt {round(profile.user_spend, 2)} sekund\n" \
+               f"✅To'g'ri ➡️ <b>{can}</b>\n"\
+               f"❌Xato ➡️ <b>{cant}</b>\n"\
+               f"☑Ulgurmagan ➡️ <b>{didnt}</b>\n\n" \
+               f"Faxriylar jadvalini ko'rish uchun <pre>/rank</pre>"
+        context.bot.send_message(text=text, chat_id=curr_id, parse_mode=ParseMode.HTML)
 
 
 def ranking(update: Update, context: CallbackContext):
@@ -284,6 +298,7 @@ def reset(update: Update, context: CallbackContext):
     profile.score = 0
     profile.level = 1
     profile.user_spend = 0.0
+    context.chat_data.update({'has_game': 0})
     profile.save()
     text = f"Sizning barcha erishganlaringiz  yo'qga aylantirildi\n" \
            f"Hozirgi Level {profile.level} va Hozirgi  Ballar {profile.score}"
@@ -303,13 +318,12 @@ class Command(BaseCommand):
     dispatcher.add_handler(CommandHandler('game', game))
     dispatcher.add_handler(CommandHandler('rank', ranking))
     dispatcher.add_handler(CommandHandler('reset', reset))
-    # dispatcher.add_handler(CommandHandler('set', set_timer))
 
     dispatcher.add_handler(CallbackQueryHandler(callback_query))
     updater.start_webhook(listen="0.0.0.0",
                           port=PORT,
                           url_path=settings.TOKEN,
-                          webhook_url="https://math-bot-app.herokuapp.com/" + settings.TOKEN)
-    # webhook_url="https://2f754af839ac.ngrok.io/" + settings.TOKEN)
+                          # webhook_url="https://math-bot-app.herokuapp.com/" + settings.TOKEN)
+                          webhook_url="https://c6bc1322b105.ngrok.io/" + settings.TOKEN)
 
     updater.idle()
