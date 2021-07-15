@@ -197,7 +197,6 @@ def callback_query(update: Update, context: CallbackContext):
         context.bot.send_message(text=text, chat_id=curr_id)
 
 
-
 def ranking(update: Update, context: CallbackContext):
     players = Profile.objects.order_by('-score')[:10]
     text = f'Bizning Faxriylarimiz \n\n'
@@ -290,6 +289,7 @@ def reset(update: Update, context: CallbackContext):
            f"Hozirgi Level {profile.level} va Hozirgi  Ballar {profile.score}"
     context.bot.send_message(curr_id, text)
 
+
 class Command(BaseCommand):
     help = 'Telegram_bot'
 
@@ -310,6 +310,6 @@ class Command(BaseCommand):
                           port=PORT,
                           url_path=settings.TOKEN,
                           webhook_url="https://math-bot-app.herokuapp.com/" + settings.TOKEN)
-                          # webhook_url="https://fad64716b093.ngrok.io/" + settings.TOKEN)
+    # webhook_url="https://2f754af839ac.ngrok.io/" + settings.TOKEN)
 
     updater.idle()
